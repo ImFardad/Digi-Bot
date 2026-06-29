@@ -1,0 +1,19 @@
+{
+  "name": "digi-bot",
+  "version": "1.0.0",
+  "description": "Telegram Group Assistant Bot deployed on Cloudflare Workers",
+  "main": "src/index.js",
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy"
+  },
+  "dependencies": {
+    "hono": "^4.4.11"
+  },
+  "devDependencies": {
+    "wrangler": "^3.62.0"
+  },
+  "author": "ImFardad",
+  "license": "ISC"
+}
