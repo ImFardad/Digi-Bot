@@ -113,14 +113,14 @@ export class AIRouter {
 
         // 5. Ultimate fallback to Cloudflare Workers AI if the chain is 'chat'
         if (chainName === 'chat' && this.ai) {
-            console.log("Ultimate Fallback: Using Cloudflare Workers AI Llama-3...");
+            console.log("Ultimate Fallback: Using Cloudflare Workers AI Llama-3.2...");
             try {
                 const messages = initialPayload.contents.map(c => ({
                     role: c.role || 'user',
                     content: c.parts[0].text
                 }));
 
-                const cfResult = await this.ai.run('@cf/meta/llama-3-8b-instruct', { messages });
+                const cfResult = await this.ai.run('@cf/meta/llama-3.2-3b-instruct', { messages });
                 const text = cfResult.response;
 
                 return {
@@ -129,7 +129,7 @@ export class AIRouter {
                             content: { parts: [{ text }] }
                         }]
                     },
-                    modelId: 'cloudflare/@cf/meta/llama-3-8b-instruct'
+                    modelId: 'cloudflare/@cf/meta/llama-3.2-3b-instruct'
                 };
             } catch (cfErr) {
                 console.error("Workers AI ultimate fallback failed:", cfErr);
@@ -260,8 +260,8 @@ Intent:`;
         // 1. Try Cloudflare Workers AI first
         if (this.ai) {
             try {
-                console.log("Using Cloudflare Workers AI Llama-3 for intent classification...");
-                const cfResult = await this.ai.run('@cf/meta/llama-3-8b-instruct', {
+                console.log("Using Cloudflare Workers AI Llama-3.2 for intent classification...");
+                const cfResult = await this.ai.run('@cf/meta/llama-3.2-3b-instruct', {
                     messages: [
                         { role: 'user', content: systemPrompt }
                     ]
@@ -332,10 +332,10 @@ Example Output:
 User input:
 "${bulkText}"`;
 
-        // Try Llama-3 first
+        // Try Llama-3.2 first
         if (this.ai) {
             try {
-                const cfResult = await this.ai.run('@cf/meta/llama-3-8b-instruct', {
+                const cfResult = await this.ai.run('@cf/meta/llama-3.2-3b-instruct', {
                     messages: [{ role: 'user', content: systemPrompt }]
                 });
                 const cleanJson = this.extractJson(cfResult.response);

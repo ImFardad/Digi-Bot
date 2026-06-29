@@ -31,7 +31,7 @@ Processes tagged group messages, direct questions, and chat conversations.
 5. **`gemini-2.5-flash-lite`** (20 RPD)
 6. **`gemma-4-31b-it`** (Very strong, but placed lower due to slower response speed - 1500 RPD)
 7. **`gemma-4-26b-a4b-it`** (Strong, placed lower due to slower speed - 1500 RPD)
-8. **Cloudflare Workers AI** (`@cf/meta/llama-3-8b-instruct` - Ultimate fallback)
+8. **Cloudflare Workers AI** (`@cf/meta/llama-3.2-3b-instruct` - Ultimate fallback)
 
 ### B. Image & Document Analysis Chain (`vision_chain`)
 Triggered when a photo/document is sent and the bot is tagged or replied to.
@@ -59,7 +59,7 @@ Used to parse complex lists of tasks or reminders in user messages via tool call
 
 ### F. Semantic Brain Router Chain (`brain_router_chain`)
 Used to classify user intent when natural language mentions or replies are received.
-1. **Cloudflare Workers AI** (`@cf/meta/llama-3-8b-instruct` - Primary, fast, edge-computed)
+1. **Cloudflare Workers AI** (`@cf/meta/llama-3.2-3b-instruct` - Primary, fast, edge-computed)
 2. **`gemma-4-31b-it`** (Fallback 1 - High quota, 1500 RPD)
 3. **`gemma-4-26b-a4b-it`** (Fallback 2 - High quota, 1500 RPD)
 

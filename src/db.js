@@ -140,4 +140,30 @@ export class DatabaseClient {
         const { results } = await this.db.prepare(query).bind(today).all();
         return results;
     }
+
+    // ==========================================
+    // MESSAGE HISTORY FOR REPLY CHAINS
+    // ==========================================
+
+    async saveMessageToHistory(messageId, chatId, userId, username, text, replyToMessageId) {
+        const query = `
+            INSERT INTO message_history (message_id, chat_id, user_id, username, text, reply_to_message_id)
+            VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(message_id, chat_id) DO UPDATE SET
+                text = excluded.text,
+                reply_to_message_id = excluded.reply_to_message_id
+        `;
+        const result = await this.db.prepare(query)
+            .bind(messageId, chatId, userId, username || null, text, replyToMessageId || null)
+            .run();
+        return result.success;
+    }
+
+    async getMessageFromHistory(chatId, messageId) {
+        const query = `
+            SELECT * FROM message_history
+            WHERE chat_id = ? AND message_id = ?
+        `;
+        return this.db.prepare(query).bind(chatId, messageId).first();
+    }
 }

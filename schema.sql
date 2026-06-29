@@ -22,3 +22,15 @@ CREATE TABLE IF NOT EXISTS quota_usage (
     daily_count INTEGER DEFAULT 0,
     last_reset_date TEXT
 );
+
+-- Store message history for reply threads and context tracing
+CREATE TABLE IF NOT EXISTS message_history (
+    message_id INTEGER NOT NULL,
+    chat_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    username TEXT,
+    text TEXT NOT NULL,
+    reply_to_message_id INTEGER,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    PRIMARY KEY (message_id, chat_id)
+);
