@@ -249,11 +249,15 @@ export class AIRouter {
     async classifyIntent(messageText) {
         const systemPrompt = `You are the routing brain of an assistant bot. Based on the user message, classify the user's intent into EXACTLY ONE of these categories:
 - CHAT: General questions, greetings, programming assistance, or conversational questions.
-- BULK_ACTION: If the user replies to a task/reminder list and asks to "register", "add", "store", or similar.
-- SEARCH: If the user asks for live/current information (e.g., news, weather, time, live prices, today's sports) requiring web search.
+  Persian Examples: "سلام چطوری؟", "برنامه نویسی پایتون بلدی؟", "هوای امروز چطوره؟" (if conversational), "کمکم کن"
+- BULK_ACTION: If the user replies to a list of tasks/reminders and asks to save/register them.
+  Persian Examples: "اینا رو ثبت کن", "لیست رو ذخیره کن", "ثبتش کن"
+- SEARCH: If the user asks for live/current information requiring Google web search (e.g. news, live prices, time, weather, sport scores).
+  Persian Examples: "قیمت تتر امروز چنده؟", "اخبار جدید گوگل رو سرچ کن", "ساعت الان تهران چنده؟", "نتیجه بازی دیشب چی شد؟"
 - TTS: If the user explicitly asks the bot to speak, say, read, voice-note, or read aloud.
+  Persian Examples: "برام ویس بگیر بگو سلام", "بگو خسته نباشید", "ویس بفرست بگو جلسه داریم", "تلفظ کن کلمه رو", "بخون این رو"
 
-Respond with ONLY the category name. Do not explain.
+Respond with ONLY the category name (CHAT, BULK_ACTION, SEARCH, or TTS). Do not explain or add markdown.
 User Message: "${messageText}"
 Intent:`;
 

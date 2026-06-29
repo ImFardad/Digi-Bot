@@ -278,7 +278,9 @@ export async function routeUpdate(update, env) {
                 await handleDirectSearch(message, cleanText, tgClient, aiRouter, dbClient);
             } 
             else if (intent === 'TTS') {
-                await handleDirectTts(message, cleanText, tgClient, aiRouter, dbClient);
+                // Strip common Persian speech prefixes: e.g. "برام ویس بگیر بگو سلام" -> "سلام"
+                const ttsClean = cleanText.replace(/^(برام\s+)?(ویس\s+بگیر|ویس\s+بفرست|بخون|بخوان|بگو|تلفظ\s+کن)\s+(بگو\s+)?/i, '').trim();
+                await handleDirectTts(message, ttsClean || cleanText, tgClient, aiRouter, dbClient);
             } 
             else if (intent === 'BULK_ACTION' && message.reply_to_message && message.reply_to_message.text) {
                 const listText = message.reply_to_message.text;
