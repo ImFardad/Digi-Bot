@@ -1,4 +1,4 @@
-name = "digi-bot"
+name = "digibot"
 main = "src/index.js"
 compatibility_date = "2024-06-01"
 compatibility_flags = [ "nodejs_compat" ]
@@ -11,10 +11,6 @@ binding = "AI"
 [triggers]
 crons = [ "* * * * *" ]
 
-# D1 Database Bindings
-# Replace database_id with your own after running: wrangler d1 create digi-bot-db
-[[d1_databases]]
-binding = "DB"
-database_name = "digi-bot-db"
-database_id = "YOUR_DATABASE_ID_HERE"
-migrations_dir = "migrations"
+# NOTE: D1 Database Binding must be configured manually in the Cloudflare Dashboard:
+# Workers & Pages -> select 'digibot' -> Settings -> Bindings -> Add D1 Database binding
+# Name the variable 'DB' and select your 'digi-bot-db' database.
