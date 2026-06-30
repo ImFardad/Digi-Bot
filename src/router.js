@@ -75,10 +75,10 @@ async function sendReplyVoice(chatId, replyToMessage, voiceBlob, spokenText, tgC
 }
 
 /**
- * Traces the message reply chain back up to 15 messages in the D1 database.
+ * Traces the message reply chain back up to 30 messages in the D1 database.
  * If there is a gap, it heals using Telegram's immediate reply payload.
  */
-async function getReplyChain(chatId, startMessage, dbClient, maxDepth = 15) {
+async function getReplyChain(chatId, startMessage, dbClient, maxDepth = 30) {
     const chain = [];
     let currentMsg = startMessage;
     let currentId = currentMsg.reply_to_message ? currentMsg.reply_to_message.message_id : null;
@@ -329,8 +329,8 @@ export async function routeUpdate(update, env) {
                 await handleDbOperation(message, parseText, tgClient, aiRouter, dbClient, message.from);
             } 
             else {
-                // Default: CHAT conversation (with up to 15 replies context)
-                const replyChain = await getReplyChain(chatId, message, dbClient, 15);
+                // Default: CHAT conversation (with up to 30 replies context)
+                const replyChain = await getReplyChain(chatId, message, dbClient, 30);
                 
                 // Format messages array with conversation history
                 const messages = [];
