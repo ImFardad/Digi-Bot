@@ -37,6 +37,13 @@ export const CHAINS = {
     search: [
         'models/gemini-2.5-flash',
         'models/gemini-2.5-flash-lite'
+    ],
+    db: [
+        'models/gemini-3.1-flash-lite-preview',
+        'models/gemini-3.5-flash',
+        'models/gemini-2.5-flash',
+        'models/gemma-4-31b-it',
+        'models/gemma-4-26b-a4b-it'
     ]
 };
 
@@ -312,8 +319,9 @@ Intent:`;
 
     /**
      * Parses user message to extract structured database operations (Add, Edit, Delete).
+     * Accepts dbContext to provide visibility of active tasks, reminders, and group members.
      */
-    async parseDbOperation(text) {
+    async parseDbOperation(text, dbContext = '') {
         const systemPrompt = `You are a database operations parser. Read the user message and extract the actions into a single JSON object.
 Supported operations:
 - ADD: To add new tasks or reminders.
@@ -334,7 +342,7 @@ JSON Output Schema:
       "type": "TASK" | "REMINDER",
       "title": "...", // (for task ADD/EDIT)
       "text": "...",  // (for reminder ADD/EDIT)
-      "assignee": "...", // (optional username for task)
+      "assignee": "...", // (optional username or name for task)
       "time": "...", // (for reminder ADD/EDIT, e.g. "10m" or "18:30")
       "search_query": "...", // (to identify item for EDIT/DELETE)
       "status": "todo" | "done" // (for task EDIT)
@@ -342,11 +350,33 @@ JSON Output Schema:
   ]
 }
 
+Database Context (Current Active Items & Group Members in this Chat):
+${dbContext}
+
 Response must be raw JSON only. Do not wrap in markdown or backticks.
 User input:
 "${text}"`;
 
-        // Try Llama-3.2 first
+        const modifier = (modelId, payload) => {
+            payload.contents = [{ parts: [{ text: systemPrompt }] }];
+            if (modelId.includes('gemini')) {
+                payload.generationConfig = {
+                    responseMimeType: "application/json"
+                };
+            }
+            return payload;
+        };
+
+        try {
+            const { result, modelId } = await this.executeChain('db', modifier);
+            const textResponse = result.candidates?.[0]?.content?.parts?.[0]?.text;
+            const cleanJson = this.extractJson(textResponse);
+            if (cleanJson) return cleanJson;
+        } catch (e) {
+            console.error("Gemini DB chain parser failed, trying local Llama-3.2 fallback:", e);
+        }
+
+        // Ultimate fallback to Workers AI Llama-3.2
         if (this.ai) {
             try {
                 const cfResult = await this.ai.run('@cf/meta/llama-3.2-3b-instruct', {
@@ -355,28 +385,7 @@ User input:
                 const cleanJson = this.extractJson(cfResult.response);
                 if (cleanJson) return cleanJson;
             } catch (e) {
-                console.error("Workers AI db parser failed:", e);
-            }
-        }
-
-        // Fallback to Gemma
-        for (const modelId of ['models/gemma-4-31b-it', 'models/gemma-4-26b-a4b-it']) {
-            try {
-                const url = `https://generativelanguage.googleapis.com/v1beta/${modelId}:generateContent?key=${this.geminiKey}`;
-                const response = await fetch(url, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ contents: [{ parts: [{ text: systemPrompt }] }] })
-                });
-
-                if (response.ok) {
-                    const data = await response.json();
-                    const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-                    const cleanJson = this.extractJson(text);
-                    if (cleanJson) return cleanJson;
-                }
-            } catch (e) {
-                console.error("Gemma db parser failed:", e);
+                console.error("Workers AI fallback db parser failed:", e);
             }
         }
 

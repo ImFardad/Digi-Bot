@@ -39,7 +39,7 @@ export class DatabaseClient {
     async getActiveTasksForUsername(username) {
         const query = `
             SELECT * FROM tasks
-            WHERE assigned_to_username = ? AND status = 'todo'
+            WHERE assigned_to_username = ? COLLATE NOCASE AND status = 'todo'
             ORDER BY created_at ASC
         `;
         const { results } = await this.db.prepare(query)
@@ -231,5 +231,60 @@ export class DatabaseClient {
             .bind(title || null, assigneeUsername || null, assigneeId || null, status || null, taskId)
             .run();
         return result.success;
+    }
+
+    async getAllPendingReminders(chatId) {
+        const query = `
+            SELECT * FROM reminders
+            WHERE chat_id = ? AND is_sent = 0
+            ORDER BY remind_at ASC
+        `;
+        const { results } = await this.db.prepare(query).bind(chatId).all();
+        return results;
+    }
+
+    // ==========================================
+    // GROUP MEMBERS METHODS
+    // ==========================================
+
+    async saveGroupMember(chatId, userId, username, firstName) {
+        const query = `
+            INSERT INTO group_members (chat_id, user_id, username, first_name, last_seen)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(chat_id, user_id) DO UPDATE SET
+                username = COALESCE(excluded.username, username),
+                first_name = excluded.first_name,
+                last_seen = CURRENT_TIMESTAMP
+        `;
+        const result = await this.db.prepare(query)
+            .bind(chatId, userId, username || null, firstName)
+            .run();
+        return result.success;
+    }
+
+    async getGroupMembers(chatId) {
+        const query = `
+            SELECT * FROM group_members
+            WHERE chat_id = ?
+            ORDER BY last_seen DESC
+        `;
+        const { results } = await this.db.prepare(query).bind(chatId).all();
+        return results;
+    }
+
+    async searchGroupMember(chatId, queryText) {
+        const cleanQuery = queryText.replace('@', '').trim();
+        const query = `
+            SELECT * FROM group_members
+            WHERE chat_id = ? AND (
+                username LIKE ? COLLATE NOCASE OR
+                first_name LIKE ? COLLATE NOCASE
+            )
+            ORDER BY last_seen DESC
+        `;
+        const { results } = await this.db.prepare(query)
+            .bind(chatId, `%${cleanQuery}%`, `%${cleanQuery}%`)
+            .all();
+        return results;
     }
 }

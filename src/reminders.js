@@ -158,3 +158,60 @@ export async function checkAndSendReminders(db, tg) {
         }
     }
 }
+
+/**
+ * Formats difference in milliseconds to readable Persian string.
+ */
+export function formatRemainingTime(ms) {
+    if (ms <= 0) return 'کمتر از ۱ دقیقه';
+    
+    const totalMinutes = Math.floor(ms / (60 * 1000));
+    const totalHours = Math.floor(totalMinutes / 60);
+    const totalDays = Math.floor(totalHours / 24);
+
+    if (totalDays > 0) {
+        const remainingHours = totalHours % 24;
+        return `${totalDays} روز و ${remainingHours} ساعت`;
+    }
+    if (totalHours > 0) {
+        const remainingMinutes = totalMinutes % 60;
+        return `${totalHours} ساعت و ${remainingMinutes} دقیقه`;
+    }
+    return `${totalMinutes} دقیقه`;
+}
+
+/**
+ * Handles the /reminds command to list all pending reminders.
+ */
+export async function handleListReminders(update, db, tg) {
+    const dbClient = new DatabaseClient(db);
+    const tgClient = new TelegramClient(tg);
+
+    const message = update.message;
+    if (!message) return;
+
+    const chatId = message.chat.id;
+    const reminders = await dbClient.getAllPendingReminders(chatId);
+
+    if (reminders.length === 0) {
+        await tgClient.sendMessage(chatId, `❌ هیچ یادآور فعالی در این گروه ثبت نشده است.`);
+        return;
+    }
+
+    let responseText = `⏰ <b>لیست یادآورهای فعال گروه:</b>\n\n`;
+    const now = new Date();
+
+    for (const rem of reminders) {
+        const remindAt = new Date(rem.remind_at);
+        const remainingMs = remindAt.getTime() - now.getTime();
+        const remainingText = formatRemainingTime(remainingMs);
+        const formattedDate = formatPersianDate(remindAt);
+        
+        responseText += `• 📌 <b>${rem.text}</b>\n`;
+        responseText += `  👤 ثبت شده برای: <a href="tg://user?id=${rem.user_id}">کاربر</a>\n`;
+        responseText += `  📅 موعد: <code>${formattedDate}</code>\n`;
+        responseText += `  ⏳ زمان باقی‌مانده: <b>${remainingText}</b>\n\n`;
+    }
+
+    await tgClient.sendMessage(chatId, responseText.trim());
+}

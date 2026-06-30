@@ -2,7 +2,7 @@ import { TelegramClient } from './telegram.js';
 import { DatabaseClient } from './db.js';
 import { AIRouter } from './ai.js';
 import { handleTasks } from './tasks.js';
-import { handleReminderCommand, parseReminderTime } from './reminders.js';
+import { handleReminderCommand, parseReminderTime, handleListReminders } from './reminders.js';
 import { pcmToWav } from './audio.js';
 
 // Constant offset for Iran Time (UTC+3:30)
@@ -149,6 +149,9 @@ export async function routeUpdate(update, env) {
     const userId = message.from.id;
     const username = message.from.username;
 
+    // Update dynamic group members registry
+    await dbClient.saveGroupMember(chatId, userId, username, message.from.first_name);
+
     // Determine if the bot is directly addressed
     const isPrivateChat = message.chat.type === 'private';
     const isMentioned = message.text && message.text.includes(`@${botUsername}`);
@@ -233,6 +236,12 @@ export async function routeUpdate(update, env) {
                             `من به شما در مدیریت وظایف (تسک‌ها)، یادآورها، جستجوی زنده وب، پاسخ‌های صوتی و تحلیل تصاویر کمک می‌کنم.\n\n` +
                             `ℹ️ برای مشاهده لیست کامل دستورات و راهنمای استفاده، دستور <code>/help</code> را ارسال کنید! 🌹`;
         await sendReplyText(chatId, message, welcomeText, tgClient, dbClient);
+        return;
+    }
+
+    // Direct /reminds or /reminds_all
+    if (rawText.startsWith('/reminds')) {
+        await handleListReminders(update, db, token);
         return;
     }
 
@@ -398,9 +407,33 @@ async function handleDirectTts(message, speakText, tgClient, aiRouter, dbClient)
 /**
  * Parses and executes structured database operations (Add, Edit, Delete).
  */
+/**
+ * Parses and executes structured database operations (Add, Edit, Delete).
+ * Injects active database context (tasks, reminders, group members) to improve LLM accuracy.
+ */
 async function handleDbOperation(message, parseText, tgClient, aiRouter, dbClient, sender) {
     const chatId = message.chat.id;
-    const { operations = [] } = await aiRouter.parseDbOperation(parseText);
+
+    // 1. Fetch current active state for context
+    const activeTasks = await dbClient.getAllActiveTasks();
+    const activeReminders = await dbClient.getAllPendingReminders(chatId);
+    const members = await dbClient.getGroupMembers(chatId);
+
+    let dbContext = "Active Tasks:\n";
+    for (const t of activeTasks) {
+        dbContext += `- ID ${t.id}: title "${t.title}", assignee username "${t.assigned_to_username || 'unassigned'}"\n`;
+    }
+    dbContext += "\nActive Pending Reminders in this Chat:\n";
+    for (const r of activeReminders) {
+        dbContext += `- ID ${r.id}: text "${r.text}", time "${r.remind_at}"\n`;
+    }
+    dbContext += "\nGroup Members in this Chat:\n";
+    for (const m of members) {
+        dbContext += `- Member: username "${m.username || 'none'}", first name "${m.first_name}", user ID ${m.user_id}\n`;
+    }
+
+    // 2. Parse operations using the database context
+    const { operations = [] } = await aiRouter.parseDbOperation(parseText, dbContext);
 
     let report = `⚙️ <b>گزارش تغییرات پایگاه‌داده:</b>\n\n`;
     let countSuccess = 0;
@@ -414,12 +447,22 @@ async function handleDbOperation(message, parseText, tgClient, aiRouter, dbClien
                 if (op.type === 'TASK') {
                     let assigneeUsername = op.assignee ? op.assignee.replace('@', '') : null;
                     let assigneeId = null;
-                    if (assigneeUsername && sender.username && assigneeUsername.toLowerCase() === sender.username.toLowerCase()) {
+
+                    // Resolve assignee from known group members registry (case-insensitive username or first name match)
+                    if (assigneeUsername) {
+                        const found = await dbClient.searchGroupMember(chatId, assigneeUsername);
+                        if (found.length > 0) {
+                            assigneeUsername = found[0].username;
+                            assigneeId = found[0].user_id;
+                        }
+                    } else if (sender.username && assigneeUsername && assigneeUsername.toLowerCase() === sender.username.toLowerCase()) {
                         assigneeId = sender.id;
                     }
+
                     const success = await dbClient.createTask(op.title, assigneeUsername, assigneeId, sender.username || sender.first_name);
                     if (success) {
-                        report += `➕ تسک <b>"${op.title}"</b> ثبت شد.\n`;
+                        const assigneeText = assigneeUsername ? `@${assigneeUsername}` : 'تخصیص‌نیافته';
+                        report += `➕ تسک <b>"${op.title}"</b> برای <b>${assigneeText}</b> ثبت شد.\n`;
                         countSuccess++;
                     }
                 } 
@@ -441,7 +484,6 @@ async function handleDbOperation(message, parseText, tgClient, aiRouter, dbClien
                 if (op.type === 'TASK') {
                     const tasks = await dbClient.searchTasks(op.search_query);
                     if (tasks.length > 0) {
-                        // Delete the best match
                         const target = tasks[0];
                         await dbClient.deleteTask(target.id);
                         report += `🗑️ تسک <b>"${target.title}"</b> حذف شد.\n`;
@@ -472,9 +514,17 @@ async function handleDbOperation(message, parseText, tgClient, aiRouter, dbClien
                         const target = tasks[0];
                         let assigneeUsername = op.assignee ? op.assignee.replace('@', '') : null;
                         let assigneeId = null;
-                        if (assigneeUsername && sender.username && assigneeUsername.toLowerCase() === sender.username.toLowerCase()) {
+
+                        if (assigneeUsername) {
+                            const found = await dbClient.searchGroupMember(chatId, assigneeUsername);
+                            if (found.length > 0) {
+                                assigneeUsername = found[0].username;
+                                assigneeId = found[0].user_id;
+                            }
+                        } else if (sender.username && assigneeUsername && assigneeUsername.toLowerCase() === sender.username.toLowerCase()) {
                             assigneeId = sender.id;
                         }
+
                         await dbClient.updateTask(target.id, op.title, assigneeUsername, assigneeId, op.status);
                         report += `✏️ تسک <b>"${target.title}"</b> با موفقیت ویرایش شد.\n`;
                         countSuccess++;
