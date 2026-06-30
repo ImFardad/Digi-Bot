@@ -320,7 +320,11 @@ Supported operations:
 - EDIT: To edit title, text, status, assignee, or time of existing tasks/reminders.
 - DELETE: To delete/remove tasks or reminders.
 
-For EDIT and DELETE operations, you must provide a "search_query" representing the text key to locate the target task or reminder (e.g. "زنگ زدن به علی" or "طراحی قالب").
+Rules:
+- Convert Persian relative times to standard format (e.g. "5 دقیقه دیگه" or "پنج دقیقه دیگه" -> "5m", "2 ساعت بعد" -> "2h", "فردا" -> "1d").
+- Convert absolute Persian times to HH:MM format (e.g. "ساعت شش و نیم عصر" or "18:30" -> "18:30").
+- If the user doesn't specify a text/description for a reminder, set "text" to "یادآوری".
+- For EDIT and DELETE operations, you must provide a "search_query" representing the text key to locate the target task or reminder (e.g. "زنگ زدن به علی" or "طراحی قالب").
 
 JSON Output Schema:
 {

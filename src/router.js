@@ -8,6 +8,24 @@ import { pcmToWav } from './audio.js';
 // Constant offset for Iran Time (UTC+3:30)
 const IRAN_OFFSET_MS = 3.5 * 60 * 60 * 1000;
 
+let cachedBotUsername = null;
+
+/**
+ * Dynamically fetches the bot's username from Telegram API and caches it.
+ */
+async function getBotUsername(tgClient) {
+    if (cachedBotUsername) return cachedBotUsername;
+    try {
+        const me = await tgClient.request('getMe');
+        cachedBotUsername = me.username;
+        console.log(`Fetched and cached bot username: @${cachedBotUsername}`);
+        return cachedBotUsername;
+    } catch (err) {
+        console.error("Failed to fetch bot username via getMe:", err);
+        return null;
+    }
+}
+
 /**
  * Helper to send a text reply and save it to D1 history.
  */
@@ -112,6 +130,10 @@ export async function routeUpdate(update, env) {
     const dbClient = new DatabaseClient(db);
     const aiRouter = new AIRouter(db, env.AI, geminiKey);
     const botId = parseInt(token.split(':')[0], 10);
+    
+    // Fetch actual bot username dynamically
+    const actualBotUsername = await getBotUsername(tgClient);
+    const botUsername = actualBotUsername || env.BOT_USERNAME || 'digibot';
 
     // ==========================================
     // 1. Direct Mode: Callbacks (Inline Buttons)
@@ -127,12 +149,11 @@ export async function routeUpdate(update, env) {
     const chatId = message.chat.id;
     const userId = message.from.id;
     const username = message.from.username;
-    const botUsername = env.BOT_USERNAME || 'digibot';
 
     // Determine if the bot is directly addressed
     const isPrivateChat = message.chat.type === 'private';
     const isMentioned = message.text && message.text.includes(`@${botUsername}`);
-    const isReplyToBot = message.reply_to_message && message.reply_to_message.from.is_bot;
+    const isReplyToBot = message.reply_to_message && message.reply_to_message.from.id === botId;
     const isAddressed = isPrivateChat || isMentioned || isReplyToBot;
 
     // Save incoming text message to history
@@ -185,10 +206,8 @@ export async function routeUpdate(update, env) {
             const mimeType = filePath.endsWith('.png') ? 'image/png' : 'image/jpeg';
 
             const prompt = message.caption || "این تصویر را تحلیل کن.";
-            const { text, modelId } = await aiRouter.generateVision(prompt, base64Image, mimeType);
-
-            const footer = `\n\n🧠 <i>پاسخ داده شده توسط مدل: ${modelId.replace('models/', '')}</i>`;
-            await sendReplyText(chatId, message, text + footer, tgClient, dbClient);
+            const { text } = await aiRouter.generateVision(prompt, base64Image, mimeType);
+            await sendReplyText(chatId, message, text, tgClient, dbClient);
 
         } catch (err) {
             console.error("Vision processing error:", err);
@@ -198,7 +217,12 @@ export async function routeUpdate(update, env) {
     }
 
     if (!message.text) return;
-    const rawText = message.text.trim();
+    
+    // Clean commands suffix for group chats (e.g. /search@botusername -> /search)
+    let rawText = message.text.trim();
+    if (botUsername) {
+        rawText = rawText.replace(new RegExp(`^(/\\w+)@${botUsername}`, 'i'), '$1');
+    }
 
     // ==========================================
     // 3. Direct Mode: Command Parsing (Bypasses Brain)
@@ -315,9 +339,8 @@ export async function routeUpdate(update, env) {
                     content: message.from.username ? `@${message.from.username}: ${cleanText}` : `${message.from.first_name}: ${cleanText}`
                 });
 
-                const { text, modelId } = await aiRouter.generateChat(messages);
-                const footer = `\n\n🧠 <i>مدل فعال: ${modelId.replace('models/', '')}</i>`;
-                await sendReplyText(chatId, message, text + footer, tgClient, dbClient);
+                const { text } = await aiRouter.generateChat(messages);
+                await sendReplyText(chatId, message, text, tgClient, dbClient);
             }
 
         } catch (err) {
@@ -349,7 +372,6 @@ async function handleDirectSearch(message, query, tgClient, aiRouter, dbClient) 
         });
     }
 
-    responseText += `\n\n🔍 <i>جستجو شده توسط: ${modelId.replace('models/', '')}</i>`;
     await sendReplyText(chatId, message, responseText, tgClient, dbClient);
 }
 
@@ -371,7 +393,7 @@ async function handleDirectTts(message, speakText, tgClient, aiRouter, dbClient)
     const wavBuffer = pcmToWav(bytes.buffer, 24000, 1, 16);
     const blob = new Blob([wavBuffer], { type: 'audio/wav' });
 
-    const caption = `🗣️ ویس خوانش متن با مدل: ${modelId.replace('models/', '')}`;
+    const caption = `🗣️ ویس خوانش متن`;
     await sendReplyVoice(chatId, message, blob, caption, tgClient, dbClient);
 }
 

@@ -125,7 +125,7 @@ export async function handleReminderCommand(update, db, tg) {
         await dbClient.createReminder(chatId, userId, reminderText, targetUtcDate.toISOString());
 
         // Format target time to Solar Hijri for confirmation message
-        const formattedDate = formatPersianDate(new Date(targetUtcDate.getTime() + IRAN_OFFSET_MS));
+        const formattedDate = formatPersianDate(targetUtcDate);
         await tgClient.sendMessage(chatId, `✅ یادآور با موفقیت برای تاریخ زیر تنظیم شد:\n📅 <b>${formattedDate}</b>`);
 
     } catch (err) {
