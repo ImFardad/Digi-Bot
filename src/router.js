@@ -324,9 +324,8 @@ export async function routeUpdate(update, env) {
                 await handleDirectTts(message, ttsClean || cleanText, tgClient, aiRouter, dbClient);
             } 
             else if (intent === 'DB_OPERATION') {
-                const parseText = (message.reply_to_message && message.reply_to_message.text) 
-                    ? message.reply_to_message.text 
-                    : cleanText;
+                const isReplyToOtherUser = message.reply_to_message && message.reply_to_message.from.id !== botId;
+                const parseText = isReplyToOtherUser ? message.reply_to_message.text : cleanText;
                 await handleDbOperation(message, parseText, tgClient, aiRouter, dbClient, message.from);
             } 
             else {
@@ -509,27 +508,52 @@ async function handleDbOperation(message, parseText, tgClient, aiRouter, dbClien
             // ==========================================
             else if (op.action === 'EDIT') {
                 if (op.type === 'TASK') {
-                    const tasks = await dbClient.searchTasks(op.search_query);
-                    if (tasks.length > 0) {
-                        const target = tasks[0];
-                        let assigneeUsername = op.assignee ? op.assignee.replace('@', '') : null;
-                        let assigneeId = null;
-
-                        if (assigneeUsername) {
-                            const found = await dbClient.searchGroupMember(chatId, assigneeUsername);
-                            if (found.length > 0) {
-                                assigneeUsername = found[0].username;
-                                assigneeId = found[0].user_id;
-                            }
-                        } else if (sender.username && assigneeUsername && assigneeUsername.toLowerCase() === sender.username.toLowerCase()) {
-                            assigneeId = sender.id;
+                    const isAllQuery = op.search_query && (
+                        op.search_query.includes('همه') || 
+                        op.search_query.includes('all') || 
+                        op.search_query.includes('کل')
+                    );
+                    
+                    if (isAllQuery) {
+                        let userTasks = await dbClient.getActiveTasksForUser(sender.id);
+                        if (userTasks.length === 0 && sender.username) {
+                            userTasks = await dbClient.getActiveTasksForUsername(sender.username);
                         }
-
-                        await dbClient.updateTask(target.id, op.title, assigneeUsername, assigneeId, op.status);
-                        report += `✏️ تسک <b>"${target.title}"</b> با موفقیت ویرایش شد.\n`;
-                        countSuccess++;
+                        
+                        if (userTasks.length > 0) {
+                            for (const t of userTasks) {
+                                await dbClient.updateTask(t.id, op.title || null, null, null, op.status || null);
+                            }
+                            const statusText = op.status === 'done' ? 'انجام شده' : op.status || 'ویرایش شده';
+                            report += `✏️ تعداد <b>${userTasks.length} تسک</b> شما به وضعیت <b>${statusText}</b> تغییر یافت.\n`;
+                            countSuccess++;
+                        } else {
+                            report += `❌ هیچ تسک فعالی برای شما پیدا نشد.\n`;
+                        }
                     } else {
-                        report += `❌ تسکی برای ویرایش با عبارت "${op.search_query}" پیدا نشد.\n`;
+                        const tasks = await dbClient.searchTasks(op.search_query);
+                        if (tasks.length > 0) {
+                            const target = tasks[0];
+                            let assigneeUsername = op.assignee ? op.assignee.replace('@', '') : null;
+                            let assigneeId = null;
+
+                            if (assigneeUsername) {
+                                const found = await dbClient.searchGroupMember(chatId, assigneeUsername);
+                                if (found.length > 0) {
+                                    assigneeUsername = found[0].username;
+                                    assigneeId = found[0].user_id;
+                                }
+                            } else if (sender.username && assigneeUsername && assigneeUsername.toLowerCase() === sender.username.toLowerCase()) {
+                                assigneeId = sender.id;
+                            }
+
+                            await dbClient.updateTask(target.id, op.title, assigneeUsername, assigneeId, op.status);
+                            const statusText = op.status === 'done' ? 'انجام شده' : 'ویرایش شده';
+                            report += `✏️ تسک <b>"${target.title}"</b> به وضعیت <b>${statusText}</b> تغییر یافت.\n`;
+                            countSuccess++;
+                        } else {
+                            report += `❌ تسکی برای ویرایش با عبارت "${op.search_query}" پیدا نشد.\n`;
+                        }
                     }
                 } 
                 else if (op.type === 'REMINDER') {

@@ -255,7 +255,7 @@ export class AIRouter {
 - CHAT: General questions, greetings, programming assistance, or conversational questions.
   Persian Examples: "سلام چطوری؟", "برنامه نویسی پایتون بلدی؟", "کمکم کن"
 - DB_OPERATION: If the user asks to add, write, delete, cancel, update, change, edit, or complete tasks or reminders (either single items or lists).
-  Persian Examples: "اینا رو ثبت کن", "لیست رو ذخیره کن", "یادآور زنگ زدن به علی رو پاک کن", "تسک فلان رو دیلیت کن", "یادآور جلسه رو تغییر بده به ساعت 19:00", "تسک طراحی قالب رو وضعیتش رو بذار رو انجام شده"
+  Persian Examples: "اینا رو ثبت کن", "لیست رو ذخیره کن", "یادآور زنگ زدن به علی رو پاک کن", "تسک فلان رو دیلیت کن", "یادآور جلسه رو تغییر بده به ساعت 19:00", "تسک طراحی قالب رو وضعیتش رو بذار رو انجام شده", "همه تسکای من انجام شد", "تسک تست ربات رو تکمیل کردم"
 - SEARCH: If the user asks for live/current information requiring Google web search (e.g. news, live prices, time, weather, sport scores).
   Persian Examples: "قیمت تتر امروز چنده؟", "اخبار جدید گوگل رو سرچ کن", "ساعت الان تهران چنده؟", "نتیجه بازی دیشب چی شد؟"
 - TTS: If the user explicitly asks the bot to speak, say, read, voice-note, or read aloud.
