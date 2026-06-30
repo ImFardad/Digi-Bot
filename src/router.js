@@ -152,6 +152,15 @@ export async function routeUpdate(update, env) {
     // ==========================================
     if (message.photo && isAddressed) {
         try {
+            // Save incoming photo message as a text placeholder in D1 history
+            await dbClient.saveMessageToHistory(
+                message.message_id,
+                chatId,
+                userId,
+                username || message.from.first_name,
+                `[فرستادن تصویر: ${message.caption || 'بدون توضیح'}]`,
+                message.reply_to_message ? message.reply_to_message.message_id : null
+            );
             const photos = message.photo;
             const largestPhoto = photos[photos.length - 1];
             const fileId = largestPhoto.file_id;
@@ -282,9 +291,11 @@ export async function routeUpdate(update, env) {
                 const ttsClean = cleanText.replace(/^(برام\s+)?(ویس\s+بگیر|ویس\s+بفرست|بخون|بخوان|بگو|تلفظ\s+کن)\s+(بگو\s+)?/i, '').trim();
                 await handleDirectTts(message, ttsClean || cleanText, tgClient, aiRouter, dbClient);
             } 
-            else if (intent === 'BULK_ACTION' && message.reply_to_message && message.reply_to_message.text) {
-                const listText = message.reply_to_message.text;
-                await handleBulkAction(message, listText, message.from, tgClient, aiRouter, dbClient);
+            else if (intent === 'DB_OPERATION') {
+                const parseText = (message.reply_to_message && message.reply_to_message.text) 
+                    ? message.reply_to_message.text 
+                    : cleanText;
+                await handleDbOperation(message, parseText, tgClient, aiRouter, dbClient, message.from);
             } 
             else {
                 // Default: CHAT conversation (with up to 15 replies context)
@@ -365,41 +376,114 @@ async function handleDirectTts(message, speakText, tgClient, aiRouter, dbClient)
 }
 
 /**
- * Parses and registers bulk tasks/reminders.
+ * Parses and executes structured database operations (Add, Edit, Delete).
  */
-async function handleBulkAction(message, bulkText, sender, tgClient, aiRouter, dbClient) {
+async function handleDbOperation(message, parseText, tgClient, aiRouter, dbClient, sender) {
     const chatId = message.chat.id;
-    const { tasks = [], reminders = [] } = await aiRouter.parseBulkInput(bulkText);
+    const { operations = [] } = await aiRouter.parseDbOperation(parseText);
 
-    let countTasks = 0;
-    let countReminders = 0;
+    let report = `⚙️ <b>گزارش تغییرات پایگاه‌داده:</b>\n\n`;
+    let countSuccess = 0;
 
-    for (const t of tasks) {
-        let assigneeUsername = t.assignee ? t.assignee.replace('@', '') : null;
-        let assigneeId = null;
-        if (assigneeUsername && sender.username && assigneeUsername.toLowerCase() === sender.username.toLowerCase()) {
-            assigneeId = sender.id;
+    for (const op of operations) {
+        try {
+            // ==========================================
+            // 1. ADD OPERATION
+            // ==========================================
+            if (op.action === 'ADD') {
+                if (op.type === 'TASK') {
+                    let assigneeUsername = op.assignee ? op.assignee.replace('@', '') : null;
+                    let assigneeId = null;
+                    if (assigneeUsername && sender.username && assigneeUsername.toLowerCase() === sender.username.toLowerCase()) {
+                        assigneeId = sender.id;
+                    }
+                    const success = await dbClient.createTask(op.title, assigneeUsername, assigneeId, sender.username || sender.first_name);
+                    if (success) {
+                        report += `➕ تسک <b>"${op.title}"</b> ثبت شد.\n`;
+                        countSuccess++;
+                    }
+                } 
+                else if (op.type === 'REMINDER') {
+                    const targetUtc = parseReminderTime(op.time);
+                    if (targetUtc) {
+                        const success = await dbClient.createReminder(chatId, sender.id, op.text, targetUtc.toISOString());
+                        if (success) {
+                            report += `➕ یادآور <b>"${op.text}"</b> برای ساعت <code>${op.time}</code> ثبت شد.\n`;
+                            countSuccess++;
+                        }
+                    }
+                }
+            }
+            // ==========================================
+            // 2. DELETE OPERATION
+            // ==========================================
+            else if (op.action === 'DELETE') {
+                if (op.type === 'TASK') {
+                    const tasks = await dbClient.searchTasks(op.search_query);
+                    if (tasks.length > 0) {
+                        // Delete the best match
+                        const target = tasks[0];
+                        await dbClient.deleteTask(target.id);
+                        report += `🗑️ تسک <b>"${target.title}"</b> حذف شد.\n`;
+                        countSuccess++;
+                    } else {
+                        report += `❌ تسکی برای حذف با عبارت "${op.search_query}" پیدا نشد.\n`;
+                    }
+                } 
+                else if (op.type === 'REMINDER') {
+                    const reminders = await dbClient.searchReminders(chatId, op.search_query);
+                    if (reminders.length > 0) {
+                        const target = reminders[0];
+                        await dbClient.deleteReminder(target.id);
+                        report += `🗑️ یادآور <b>"${target.text}"</b> حذف شد.\n`;
+                        countSuccess++;
+                    } else {
+                        report += `❌ یادآوری برای حذف با عبارت "${op.search_query}" پیدا نشد.\n`;
+                    }
+                }
+            }
+            // ==========================================
+            // 3. EDIT OPERATION
+            // ==========================================
+            else if (op.action === 'EDIT') {
+                if (op.type === 'TASK') {
+                    const tasks = await dbClient.searchTasks(op.search_query);
+                    if (tasks.length > 0) {
+                        const target = tasks[0];
+                        let assigneeUsername = op.assignee ? op.assignee.replace('@', '') : null;
+                        let assigneeId = null;
+                        if (assigneeUsername && sender.username && assigneeUsername.toLowerCase() === sender.username.toLowerCase()) {
+                            assigneeId = sender.id;
+                        }
+                        await dbClient.updateTask(target.id, op.title, assigneeUsername, assigneeId, op.status);
+                        report += `✏️ تسک <b>"${target.title}"</b> با موفقیت ویرایش شد.\n`;
+                        countSuccess++;
+                    } else {
+                        report += `❌ تسکی برای ویرایش با عبارت "${op.search_query}" پیدا نشد.\n`;
+                    }
+                } 
+                else if (op.type === 'REMINDER') {
+                    const reminders = await dbClient.searchReminders(chatId, op.search_query);
+                    if (reminders.length > 0) {
+                        const target = reminders[0];
+                        const targetUtc = op.time ? parseReminderTime(op.time) : null;
+                        await dbClient.updateReminder(target.id, op.text, targetUtc ? targetUtc.toISOString() : null);
+                        report += `✏️ یادآور <b>"${target.text}"</b> با موفقیت ویرایش شد.\n`;
+                        countSuccess++;
+                    } else {
+                        report += `❌ یادآوری برای ویرایش با عبارت "${op.search_query}" پیدا نشد.\n`;
+                    }
+                }
+            }
+        } catch (e) {
+            console.error("Error processing operations:", e);
+            report += `⚠️ خطا در اجرای عملیات روی "${op.title || op.text || op.search_query}": ${e.message}\n`;
         }
-
-        const success = await dbClient.createTask(t.title, assigneeUsername, assigneeId, sender.username || sender.first_name);
-        if (success) countTasks++;
     }
 
-    for (const r of reminders) {
-        const targetUtc = parseReminderTime(r.time);
-        if (targetUtc) {
-            const success = await dbClient.createReminder(chatId, sender.id, r.text, targetUtc.toISOString());
-            if (success) countReminders++;
-        }
+    if (countSuccess === 0 && operations.length === 0) {
+        report = `❌ هیچ درخواست تغییر یا ثبت دیتابیسی در پیام پیدا نشد.`;
     }
 
-    let report = `✅ <b>پردازش دسته‌ای با موفقیت انجام شد:</b>\n\n`;
-    if (countTasks > 0) report += `📋 تعداد <b>${countTasks} تسک</b> کاری ثبت شد.\n`;
-    if (countReminders > 0) report += `⏰ تعداد <b>${countReminders} یادآور</b> هوشمند در دیتابیس ذخیره شد.\n`;
-    
-    if (countTasks === 0 && countReminders === 0) {
-        report = `❌ هیچ تسک یا یادآور معتبری در متن لیست پیدا نشد.`;
-    }
-
-    await sendReplyText(chatId, message, report, tgClient, dbClient);
+    await sendReplyText(chatId, message, report.trim(), tgClient, dbClient);
 }

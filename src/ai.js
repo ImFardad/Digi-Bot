@@ -243,21 +243,18 @@ export class AIRouter {
         return { text, modelId };
     }
 
-    /**
-     * Semantic Brain Router: Classifies user intent.
-     */
     async classifyIntent(messageText) {
         const systemPrompt = `You are the routing brain of an assistant bot. Based on the user message, classify the user's intent into EXACTLY ONE of these categories:
 - CHAT: General questions, greetings, programming assistance, or conversational questions.
-  Persian Examples: "سلام چطوری؟", "برنامه نویسی پایتون بلدی؟", "هوای امروز چطوره؟" (if conversational), "کمکم کن"
-- BULK_ACTION: If the user replies to a list of tasks/reminders and asks to save/register them.
-  Persian Examples: "اینا رو ثبت کن", "لیست رو ذخیره کن", "ثبتش کن"
+  Persian Examples: "سلام چطوری؟", "برنامه نویسی پایتون بلدی؟", "کمکم کن"
+- DB_OPERATION: If the user asks to add, write, delete, cancel, update, change, edit, or complete tasks or reminders (either single items or lists).
+  Persian Examples: "اینا رو ثبت کن", "لیست رو ذخیره کن", "یادآور زنگ زدن به علی رو پاک کن", "تسک فلان رو دیلیت کن", "یادآور جلسه رو تغییر بده به ساعت 19:00", "تسک طراحی قالب رو وضعیتش رو بذار رو انجام شده"
 - SEARCH: If the user asks for live/current information requiring Google web search (e.g. news, live prices, time, weather, sport scores).
   Persian Examples: "قیمت تتر امروز چنده؟", "اخبار جدید گوگل رو سرچ کن", "ساعت الان تهران چنده؟", "نتیجه بازی دیشب چی شد؟"
 - TTS: If the user explicitly asks the bot to speak, say, read, voice-note, or read aloud.
   Persian Examples: "برام ویس بگیر بگو سلام", "بگو خسته نباشید", "ویس بفرست بگو جلسه داریم", "تلفظ کن کلمه رو", "بخون این رو"
 
-Respond with ONLY the category name (CHAT, BULK_ACTION, SEARCH, or TTS). Do not explain or add markdown.
+Respond with ONLY the category name (CHAT, DB_OPERATION, SEARCH, or TTS). Do not explain or add markdown.
 User Message: "${messageText}"
 Intent:`;
 
@@ -271,7 +268,7 @@ Intent:`;
                     ]
                 });
                 const intent = cfResult.response?.trim().toUpperCase();
-                if (['CHAT', 'BULK_ACTION', 'SEARCH', 'TTS'].includes(intent)) {
+                if (['CHAT', 'DB_OPERATION', 'SEARCH', 'TTS'].includes(intent)) {
                     console.log(`Intent classified by Workers AI: ${intent}`);
                     return intent;
                 }
@@ -299,7 +296,7 @@ Intent:`;
                 if (response.ok) {
                     const data = await response.json();
                     const intent = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim().toUpperCase();
-                    if (intent && ['CHAT', 'BULK_ACTION', 'SEARCH', 'TTS'].includes(intent)) {
+                    if (intent && ['CHAT', 'DB_OPERATION', 'SEARCH', 'TTS'].includes(intent)) {
                         console.log(`Intent classified by ${modelId}: ${intent}`);
                         return intent;
                     }
@@ -314,27 +311,36 @@ Intent:`;
     }
 
     /**
-     * Parses bulk tasks or reminders from text.
+     * Parses user message to extract structured database operations (Add, Edit, Delete).
      */
-    async parseBulkInput(bulkText) {
-        const systemPrompt = `You are a structured parser. Read the user message containing a list of tasks or reminders, and extract them into a single clean JSON object.
-Rules:
-- Assign tasks to usernames if mentioned (e.g. "@username" or "username").
-- Relative times for reminders should be like: "10m", "2h", "1d" or absolute "15:30".
-- Response must be raw JSON only. Do not wrap in markdown or backticks.
+    async parseDbOperation(text) {
+        const systemPrompt = `You are a database operations parser. Read the user message and extract the actions into a single JSON object.
+Supported operations:
+- ADD: To add new tasks or reminders.
+- EDIT: To edit title, text, status, assignee, or time of existing tasks/reminders.
+- DELETE: To delete/remove tasks or reminders.
 
-Example Output:
+For EDIT and DELETE operations, you must provide a "search_query" representing the text key to locate the target task or reminder (e.g. "زنگ زدن به علی" or "طراحی قالب").
+
+JSON Output Schema:
 {
-  "tasks": [
-    { "title": "Design landing page", "assignee": "Ali" }
-  ],
-  "reminders": [
-    { "text": "Call client", "time": "15m" }
+  "operations": [
+    {
+      "action": "ADD" | "EDIT" | "DELETE",
+      "type": "TASK" | "REMINDER",
+      "title": "...", // (for task ADD/EDIT)
+      "text": "...",  // (for reminder ADD/EDIT)
+      "assignee": "...", // (optional username for task)
+      "time": "...", // (for reminder ADD/EDIT, e.g. "10m" or "18:30")
+      "search_query": "...", // (to identify item for EDIT/DELETE)
+      "status": "todo" | "done" // (for task EDIT)
+    }
   ]
 }
 
+Response must be raw JSON only. Do not wrap in markdown or backticks.
 User input:
-"${bulkText}"`;
+"${text}"`;
 
         // Try Llama-3.2 first
         if (this.ai) {
@@ -345,7 +351,7 @@ User input:
                 const cleanJson = this.extractJson(cfResult.response);
                 if (cleanJson) return cleanJson;
             } catch (e) {
-                console.error("Workers AI bulk parser failed:", e);
+                console.error("Workers AI db parser failed:", e);
             }
         }
 
@@ -366,11 +372,11 @@ User input:
                     if (cleanJson) return cleanJson;
                 }
             } catch (e) {
-                console.error("Gemma bulk parser failed:", e);
+                console.error("Gemma db parser failed:", e);
             }
         }
 
-        return { tasks: [], reminders: [] };
+        return { operations: [] };
     }
 
     extractJson(text) {

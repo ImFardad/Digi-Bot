@@ -166,4 +166,70 @@ export class DatabaseClient {
         `;
         return this.db.prepare(query).bind(chatId, messageId).first();
     }
+
+    // ==========================================
+    // DB MANAGEMENT / EDIT & DELETE OPERATIONS
+    // ==========================================
+
+    async searchReminders(chatId, queryText) {
+        const query = `
+            SELECT * FROM reminders
+            WHERE chat_id = ? AND is_sent = 0 AND text LIKE ?
+            ORDER BY remind_at ASC
+        `;
+        const { results } = await this.db.prepare(query)
+            .bind(chatId, `%${queryText}%`)
+            .all();
+        return results;
+    }
+
+    async deleteReminder(reminderId) {
+        const query = `DELETE FROM reminders WHERE id = ?`;
+        const result = await this.db.prepare(query).bind(reminderId).run();
+        return result.success;
+    }
+
+    async updateReminder(reminderId, text, remindAt) {
+        const query = `
+            UPDATE reminders
+            SET text = COALESCE(?, text),
+                remind_at = COALESCE(?, remind_at)
+            WHERE id = ?
+        `;
+        const result = await this.db.prepare(query).bind(text || null, remindAt || null, reminderId).run();
+        return result.success;
+    }
+
+    async searchTasks(queryText) {
+        const query = `
+            SELECT * FROM tasks
+            WHERE status = 'todo' AND title LIKE ?
+            ORDER BY created_at ASC
+        `;
+        const { results } = await this.db.prepare(query)
+            .bind(`%${queryText}%`)
+            .all();
+        return results;
+    }
+
+    async deleteTask(taskId) {
+        const query = `DELETE FROM tasks WHERE id = ?`;
+        const result = await this.db.prepare(query).bind(taskId).run();
+        return result.success;
+    }
+
+    async updateTask(taskId, title, assigneeUsername, assigneeId, status) {
+        const query = `
+            UPDATE tasks
+            SET title = COALESCE(?, title),
+                assigned_to_username = COALESCE(?, assigned_to_username),
+                assigned_to_id = COALESCE(?, assigned_to_id),
+                status = COALESCE(?, status)
+            WHERE id = ?
+        `;
+        const result = await this.db.prepare(query)
+            .bind(title || null, assigneeUsername || null, assigneeId || null, status || null, taskId)
+            .run();
+        return result.success;
+    }
 }
