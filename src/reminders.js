@@ -40,6 +40,8 @@ export function formatPersianDate(date) {
 export function parseReminderTime(timeStr) {
     const relativeRegex = /^(\d+)([mhd])$/i;
     const absoluteRegex = /^(\d{1,2}):(\d{2})$/;
+    const relDayAbsTimeRegex = /^(\d+)d\s+(\d{1,2}):(\d{2})$/i;
+    const dateTimeRegex = /^(\d{4})-(\d{2})-(\d{2})[T ](\d{2}):(\d{2})/;
 
     const iranNow = getIranNow();
 
@@ -61,7 +63,21 @@ export function parseReminderTime(timeStr) {
         return iranToUtc(targetIranDate);
     }
 
-    // 2. Match Absolute Time (e.g., 15:30)
+    // 2. Match Relative Day + Absolute Time (e.g., "1d 12:00", "2d 15:30")
+    const relDayAbsTimeMatch = timeStr.match(relDayAbsTimeRegex);
+    if (relDayAbsTimeMatch) {
+        const days = parseInt(relDayAbsTimeMatch[1], 10);
+        const hours = parseInt(relDayAbsTimeMatch[2], 10);
+        const minutes = parseInt(relDayAbsTimeMatch[3], 10);
+
+        const targetIranDate = new Date(iranNow.getTime());
+        targetIranDate.setDate(targetIranDate.getDate() + days);
+        targetIranDate.setHours(hours, minutes, 0, 0);
+
+        return iranToUtc(targetIranDate);
+    }
+
+    // 3. Match Absolute Time (e.g., 15:30)
     const absoluteMatch = timeStr.match(absoluteRegex);
     if (absoluteMatch) {
         const hours = parseInt(absoluteMatch[1], 10);
@@ -80,6 +96,19 @@ export function parseReminderTime(timeStr) {
         }
 
         return iranToUtc(targetIranDate);
+    }
+
+    // 4. Match Specific DateTime String in Tehran time (e.g., "2026-07-02 12:00")
+    const dateTimeMatch = timeStr.match(dateTimeRegex);
+    if (dateTimeMatch) {
+        const year = parseInt(dateTimeMatch[1], 10);
+        const month = parseInt(dateTimeMatch[2], 10) - 1;
+        const day = parseInt(dateTimeMatch[3], 10);
+        const hours = parseInt(dateTimeMatch[4], 10);
+        const minutes = parseInt(dateTimeMatch[5], 10);
+
+        const utcDate = new Date(Date.UTC(year, month, day, hours, minutes, 0, 0));
+        return new Date(utcDate.getTime() - IRAN_OFFSET_MS);
     }
 
     return null;

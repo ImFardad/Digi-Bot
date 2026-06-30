@@ -2,7 +2,7 @@ import { TelegramClient } from './telegram.js';
 import { DatabaseClient } from './db.js';
 import { AIRouter } from './ai.js';
 import { handleTasks } from './tasks.js';
-import { handleReminderCommand, parseReminderTime, handleListReminders } from './reminders.js';
+import { handleReminderCommand, parseReminderTime, handleListReminders, formatPersianDate } from './reminders.js';
 import { pcmToWav } from './audio.js';
 
 // Constant offset for Iran Time (UTC+3:30)
@@ -418,7 +418,16 @@ async function handleDbOperation(message, parseText, tgClient, aiRouter, dbClien
     const activeReminders = await dbClient.getAllPendingReminders(chatId);
     const members = await dbClient.getGroupMembers(chatId);
 
-    let dbContext = "Active Tasks:\n";
+    // Get current Iranian calendar and time context
+    const now = new Date();
+    const iranNow = new Date(now.getTime() + IRAN_OFFSET_MS);
+    const formattedIranNow = formatPersianDate(now);
+
+    let dbContext = `Current Time Context:\n`;
+    dbContext += `- Gregorian UTC Time: ${now.toISOString()}\n`;
+    dbContext += `- Iran Local Time: ${formattedIranNow} (${iranNow.toISOString().replace('Z', '')} local)\n\n`;
+
+    dbContext += "Active Tasks:\n";
     for (const t of activeTasks) {
         dbContext += `- ID ${t.id}: title "${t.title}", assignee username "${t.assigned_to_username || 'unassigned'}"\n`;
     }
