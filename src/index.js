@@ -1,6 +1,8 @@
 import { Hono } from 'hono';
 import { routeUpdate } from './router.js';
 import { checkAndSendReminders } from './reminders.js';
+import { checkAndSendDailyGames } from './games.js';
+import { DatabaseClient } from './db.js';
 
 const app = new Hono();
 
@@ -24,11 +26,20 @@ app.post('/webhook', async (c) => {
     }
 });
 
-// Export Hono fetch handler alongside scheduled Cron Trigger handler for reminders
+// Export Hono fetch handler alongside scheduled Cron Trigger handler
 export default {
     fetch: app.fetch,
     async scheduled(event, env, ctx) {
-        // Runs background check for reminders every minute
-        ctx.waitUntil(checkAndSendReminders(env.DB, env.TELEGRAM_BOT_TOKEN));
+        ctx.waitUntil((async () => {
+            // 1. Run background reminders check
+            await checkAndSendReminders(env.DB, env.TELEGRAM_BOT_TOKEN);
+            
+            // 2. Run background daily games check (if group chat is registered)
+            const dbClient = new DatabaseClient(env.DB);
+            const activeGroupId = await dbClient.getGameSetting("active_group_chat_id");
+            if (activeGroupId) {
+                await checkAndSendDailyGames(env.DB, env.TELEGRAM_BOT_TOKEN, env.GEMINI_API_KEY, parseInt(activeGroupId, 10));
+            }
+        })());
     }
 };

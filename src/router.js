@@ -4,6 +4,7 @@ import { AIRouter } from './ai.js';
 import { handleTasks } from './tasks.js';
 import { handleReminderCommand, parseReminderTime, handleListReminders, formatPersianDate } from './reminders.js';
 import { pcmToWav } from './audio.js';
+import { handleQuizCallback, checkWordGuessIncoming, handleLeaderboard } from './games.js';
 
 // Constant offset for Iran Time (UTC+3:30)
 const IRAN_OFFSET_MS = 3.5 * 60 * 60 * 1000;
@@ -135,10 +136,14 @@ export async function routeUpdate(update, env) {
     const botUsername = actualBotUsername || env.BOT_USERNAME || 'digibot';
 
     // ==========================================
-    // 1. Direct Mode: Callbacks (Inline Buttons)
+    // 1. Direct Mode: Callbacks (Inline Buttons & Games)
     // ==========================================
     if (update.callback_query) {
-        await handleTasks(update, db, token);
+        if (update.callback_query.data.startsWith('quiz:')) {
+            await handleQuizCallback(update, db, token);
+        } else {
+            await handleTasks(update, db, token);
+        }
         return;
     }
 
@@ -151,6 +156,17 @@ export async function routeUpdate(update, env) {
 
     // Update dynamic group members registry
     await dbClient.saveGroupMember(chatId, userId, username, message.from.first_name);
+
+    // Dynamically learn active group chat ID for daily tech games
+    if (message.chat.type === 'group' || message.chat.type === 'supergroup') {
+        await dbClient.setGameSetting("active_group_chat_id", String(chatId));
+    }
+
+    // Intercept message if there is an active tech word guess game
+    if (message.text) {
+        const solved = await checkWordGuessIncoming(message, db, token);
+        if (solved) return;
+    }
 
     // Determine if the bot is directly addressed
     const isPrivateChat = message.chat.type === 'private';
@@ -245,6 +261,12 @@ export async function routeUpdate(update, env) {
         return;
     }
 
+    // Direct /leaderboard or /game_scores
+    if (rawText.startsWith('/leaderboard') || rawText.startsWith('/game_scores')) {
+        await handleLeaderboard(update, db, token);
+        return;
+    }
+
     // Direct /help
     if (rawText.startsWith('/help')) {
         const helpText = `📋 <b>راهنمای کامل دستورات Digi-Bot:</b>\n\n` +
@@ -252,19 +274,15 @@ export async function routeUpdate(update, env) {
                          `• <code>/tasks</code> - نمایش تسک‌های فعال شما\n` +
                          `• <code>/tasks_all</code> - نمایش کل تسک‌های فعال گروه به تفکیک افراد\n` +
                          `• نوشتن کلمه <code>done</code> یا <code>تمومه</code> جهت تیک زدن تسک فعلی\n\n` +
-                         `⏰ <b>یادآورهای هوشمند (منطقه زمانی تهران):</b>\n` +
-                         `• <code>/remind [زمان] [متن]</code> - ثبت یادآور جدید\n` +
-                         `   مثال نسبی: <code>/remind 10m تماس با علی</code>\n` +
-                         `   مثال ساعت مشخص: <code>/remind 18:30 جلسه هماهنگی</code>\n\n` +
-                         `🔍 <b>جستجوی زنده در وب (گوگل):</b>\n` +
-                         `• <code>/search [موضوع]</code> - سرچ زنده وب و دریافت پاسخ مستند با لینک منابع\n\n` +
-                         `🔊 <b>تبدیل متن به ویس (TTS):</b>\n` +
-                         `• <code>/say [متن]</code> - خوانش صوتی متن شما با ویس تلگرامی\n\n` +
-                         `💬 <b>هوش مصنوعی و مغز ربات (تگ یا ریپلای):</b>\n` +
-                         `• کافیست ربات را تگ کنید یا روی پیام ریپلای بزنید تا به شما پاسخ دهد.\n` +
-                         `• <b>ثبت لیست دسته‌ای:</b> روی یک لیست متنی از تسک‌ها/یادآورها ریپلای بزنید و ربات را تگ کرده، بنویسید <i>«اینا رو ثبت کن»</i> تا همه را خودکار به دیتابیس ببرد.\n\n` +
-                         `🖼️ <b>تحلیل تصاویر (بینایی ماشین):</b>\n` +
-                         `• یک تصویر بفرستید و ربات را تگ کنید تا آن را تحلیل و بررسی کند.`;
+                         `⏰ <b>یادآورهای هوشمند (تهران):</b>\n` +
+                         `• <code>/remind [زمان] [متن]</code> - ثبت یادآور (مثال: 10m یا 18:30)\n` +
+                         `• <code>/reminds</code> - نمایش لیست یادآورهای فعال گروه\n\n` +
+                         `🏆 <b>بازی‌ها و سرگرمی:</b>\n` +
+                         `• <code>/leaderboard</code> - نمایش رده‌بندی امتیازات بازی‌های تکنولوژی\n\n` +
+                         `🗣️ <b>پیام صوتی:</b>\n` +
+                         `• <code>/say [متن]</code> - خواندن مستقیم متن با ویس\n\n` +
+                         `🔍 <b>جستجوی وب:</b>\n` +
+                         `• <code>/search [موضوع]</code> - سرچ زنده در وب`;
         await sendReplyText(chatId, message, helpText, tgClient, dbClient);
         return;
     }

@@ -287,4 +287,140 @@ export class DatabaseClient {
             .all();
         return results;
     }
+
+    // ==========================================
+    // GAME MODULE METHODS
+    // ==========================================
+
+    async getGameSetting(key) {
+        const query = `SELECT value FROM game_settings WHERE key = ?`;
+        const row = await this.db.prepare(query).bind(key).first();
+        return row ? row.value : null;
+    }
+
+    async setGameSetting(key, value) {
+        const query = `
+            INSERT INTO game_settings (key, value)
+            VALUES (?, ?)
+            ON CONFLICT(key) DO UPDATE SET value = excluded.value
+        `;
+        const result = await this.db.prepare(query).bind(key, String(value)).run();
+        return result.success;
+    }
+
+    async getUnusedQuizzes(limit = 14) {
+        const query = `SELECT * FROM quiz_pool WHERE is_used = 0 ORDER BY id ASC LIMIT ?`;
+        const { results } = await this.db.prepare(query).bind(limit).all();
+        return results;
+    }
+
+    async getRecentQuizzes(limit = 14) {
+        const query = `SELECT * FROM quiz_pool ORDER BY id DESC LIMIT ?`;
+        const { results } = await this.db.prepare(query).bind(limit).all();
+        return results;
+    }
+
+    async saveQuizQuestion(question, optionsJson, correctIndex) {
+        const query = `
+            INSERT INTO quiz_pool (question, options, correct_index)
+            VALUES (?, ?, ?)
+        `;
+        const result = await this.db.prepare(query).bind(question, optionsJson, correctIndex).run();
+        return result.success;
+    }
+
+    async markQuizAsSent(quizId) {
+        const query = `UPDATE quiz_pool SET is_used = 1, sent_at = CURRENT_TIMESTAMP WHERE id = ?`;
+        const result = await this.db.prepare(query).bind(quizId).run();
+        return result.success;
+    }
+
+    async getActiveQuiz() {
+        const query = `
+            SELECT * FROM quiz_pool 
+            WHERE is_used = 1 AND is_answered = 0 
+            ORDER BY sent_at DESC LIMIT 1
+        `;
+        return this.db.prepare(query).first();
+    }
+
+    async resolveQuiz(quizId, winnerId, winnerUsername) {
+        const query = `
+            UPDATE quiz_pool 
+            SET is_answered = 1, winner_id = ?, winner_username = ? 
+            WHERE id = ?
+        `;
+        const result = await this.db.prepare(query).bind(winnerId, winnerUsername || null, quizId).run();
+        return result.success;
+    }
+
+    async getUnusedGuesses(limit = 14) {
+        const query = `SELECT * FROM guess_pool WHERE is_used = 0 ORDER BY id ASC LIMIT ?`;
+        const { results } = await this.db.prepare(query).bind(limit).all();
+        return results;
+    }
+
+    async getRecentGuesses(limit = 14) {
+        const query = `SELECT * FROM guess_pool ORDER BY id DESC LIMIT ?`;
+        const { results } = await this.db.prepare(query).bind(limit).all();
+        return results;
+    }
+
+    async saveGuessWord(word, scrambled, clue) {
+        const query = `
+            INSERT INTO guess_pool (word, scrambled, clue)
+            VALUES (?, ?, ?)
+        `;
+        const result = await this.db.prepare(query).bind(word, scrambled, clue).run();
+        return result.success;
+    }
+
+    async markGuessAsSent(guessId) {
+        const query = `UPDATE guess_pool SET is_used = 1, sent_at = CURRENT_TIMESTAMP WHERE id = ?`;
+        const result = await this.db.prepare(query).bind(guessId).run();
+        return result.success;
+    }
+
+    async getActiveGuess() {
+        const query = `
+            SELECT * FROM guess_pool 
+            WHERE is_used = 1 AND is_guessed = 0 
+            ORDER BY sent_at DESC LIMIT 1
+        `;
+        return this.db.prepare(query).first();
+    }
+
+    async resolveGuess(guessId, winnerId, winnerUsername) {
+        const query = `
+            UPDATE guess_pool 
+            SET is_guessed = 1, winner_id = ?, winner_username = ? 
+            WHERE id = ?
+        `;
+        const result = await this.db.prepare(query).bind(winnerId, winnerUsername || null, guessId).run();
+        return result.success;
+    }
+
+    async updatePlayerScore(chatId, userId, username, firstName, points) {
+        const query = `
+            INSERT INTO game_scores (chat_id, user_id, username, first_name, score)
+            VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(chat_id, user_id) DO UPDATE SET
+                username = COALESCE(excluded.username, username),
+                first_name = excluded.first_name,
+                score = score + excluded.score
+        `;
+        const result = await this.db.prepare(query).bind(chatId, userId, username || null, firstName, points).run();
+        return result.success;
+    }
+
+    async getLeaderboard(chatId) {
+        const query = `
+            SELECT * FROM game_scores
+            WHERE chat_id = ?
+            ORDER BY score DESC
+            LIMIT 10
+        `;
+        const { results } = await this.db.prepare(query).bind(chatId).all();
+        return results;
+    }
 }

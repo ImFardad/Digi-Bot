@@ -42,3 +42,41 @@ CREATE TABLE IF NOT EXISTS group_members (
     last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
     PRIMARY KEY (chat_id, user_id)
 );
+
+CREATE TABLE IF NOT EXISTS quiz_pool (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    question TEXT NOT NULL,
+    options TEXT NOT NULL,
+    correct_index INTEGER NOT NULL,
+    is_used INTEGER DEFAULT 0,
+    is_answered INTEGER DEFAULT 0,
+    winner_username TEXT,
+    winner_id INTEGER,
+    sent_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS guess_pool (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    word TEXT NOT NULL,
+    scrambled TEXT NOT NULL,
+    clue TEXT NOT NULL,
+    is_used INTEGER DEFAULT 0,
+    is_guessed INTEGER DEFAULT 0,
+    winner_username TEXT,
+    winner_id INTEGER,
+    sent_at TIMESTAMP
+);
+
+CREATE TABLE IF NOT EXISTS game_scores (
+    chat_id INTEGER NOT NULL,
+    user_id INTEGER NOT NULL,
+    username TEXT,
+    first_name TEXT NOT NULL,
+    score INTEGER DEFAULT 0,
+    PRIMARY KEY (chat_id, user_id)
+);
+
+CREATE TABLE IF NOT EXISTS game_settings (
+    key TEXT PRIMARY KEY,
+    value TEXT
+);
