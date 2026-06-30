@@ -53,12 +53,11 @@ async function sendReplyText(chatId, replyToMessage, text, tgClient, dbClient, o
 /**
  * Helper to send a voice reply and save it to D1 history.
  */
-async function sendReplyVoice(chatId, replyToMessage, voiceBlob, caption, tgClient, dbClient, options = {}) {
+async function sendReplyVoice(chatId, replyToMessage, voiceBlob, spokenText, tgClient, dbClient, options = {}) {
     const replyOptions = {
         reply_parameters: {
             message_id: replyToMessage.message_id
         },
-        caption,
         ...options
     };
     const sentMsg = await tgClient.sendVoice(chatId, voiceBlob, 'voice.wav', replyOptions);
@@ -68,7 +67,7 @@ async function sendReplyVoice(chatId, replyToMessage, voiceBlob, caption, tgClie
             chatId,
             sentMsg.from.id,
             sentMsg.from.username || sentMsg.from.first_name,
-            `🗣️ [پیام صوتی]: ${caption}`,
+            `🗣️ [پیام صوتی]: ${spokenText}`,
             replyToMessage.message_id
         );
     }
@@ -393,8 +392,7 @@ async function handleDirectTts(message, speakText, tgClient, aiRouter, dbClient)
     const wavBuffer = pcmToWav(bytes.buffer, 24000, 1, 16);
     const blob = new Blob([wavBuffer], { type: 'audio/wav' });
 
-    const caption = `🗣️ ویس خوانش متن`;
-    await sendReplyVoice(chatId, message, blob, caption, tgClient, dbClient);
+    await sendReplyVoice(chatId, message, blob, speakText, tgClient, dbClient);
 }
 
 /**
